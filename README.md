@@ -1,6 +1,6 @@
 # cllct
 ## constant length linked comparison table
-compares large numbers of numbers of constant length quickly but uses a lot of space
+compares large numbers of numbers (or any data actually) of constant length quickly but uses a lot of space
 
 ## How it works:
 The number gets divided into smaller units (e.g. bytes). For the first number in a file each unit gets as many links as there are numbers that can be represented with that unit. the link of the number wihch this unit actually is filled with the address of the current end of the file. To the end of the file the next set of links will be written but the link which cottesponds to the next unit of the file will now be filled with the address of the ond of the file. this is repeated until the end of the number. All empty links must be zero.
