@@ -1,6 +1,6 @@
-include "cllct.h"
+#include "cllct.h"
 
-int init_cllct_ctx(cllctx_t* ctx, char* filepath, size_t number_total_units)
+int init_cllct_ctx(cllct_ctx_t* ctx, char* filepath, size_t number_total_units)
 {
 	ctx->tablefile = fopen(filepath, "ab+"); /* create file if it doesn't exist */
 	uint64_t file_n_total_units = (uint64_t) number_total_units;
@@ -60,40 +60,41 @@ int init_cllct_ctx(cllctx_t* ctx, char* filepath, size_t number_total_units)
 		if(units != file_n_total_units) {
 			return CLLCT_ERROR_INVAL_FILE;
 		}
-		ctx->numunits = number_total_units;
 	}
-
+	ctx->numunits = number_total_units;
 	return 0;
 }
 
-off_t get_link(char index, off_t offset, cllct_ctx* ctx)
+int get_link(char index, off_t offset, uint64_t* result, cllct_ctx_t* ctx)
 {
-	off_t addr;
-	fseeko(ctx->tablefile, offset+index, SEEK_SET);
-	if(fread(&addr, sizeof(uint64_t), 1, ctx->tablefile) != 1) {
-		exit(CLLCT_ERROR_CANTREAD); /*TODO do not exit here!
-																 * find a way to report the error (errno?) */
+	fseeko(ctx->tablefile, offset+(off_t)(index*sizeof(uint64_t)), SEEK_SET);
+	if(fread((void*)result, sizeof(uint64_t), 1, ctx->tablefile) != 1) {
+		return CLLCT_ERROR_CANTREAD; 
 	}
-	return addr;
+	return 0;
 }
 
-int write_link(char index, off_t offset, uint64_t link_dest, cllct_ctx* ctx) {
-	fseeko(ctx->tablefile, offset+index, SEEK_SET);
+int write_link(unsigned char index, off_t offset, uint64_t link_dest, cllct_ctx_t* ctx) {
+	/*fseeko(ctx->tablefile, offset+index, SEEK_SET);
 	if(fwrite(&link_dest, sizeof(uint64_t), 1, ctx->tablefile) != 1) {
 		return CLLCT_ERROR_CANTWRITE;														  
-	}
+	}*/
+	uint64_t e = 118811;
+	fseeko(ctx->tablefile, offset+(off_t)(index*sizeof(uint64_t)), SEEK_SET);
+	fwrite(&link_dest, sizeof(uint64_t), 1, ctx->tablefile);
+	return 0;
 }
 
-int insert_chararray(cllct_ctx* ctx, unsigned char* chars)
+int insert_chararray(cllct_ctx_t* ctx, unsigned char* chars)
 {
 	char unitval;
 	char creation_mode = 0;
 	off_t offset, tryoffset;
 	if(chars == 0) {
-		return ERROR_INVALARG;
+		return CLLCT_ERROR_INVALARG;
 	}
 	offset = 128;
-	for(int i = 0; i < numunits; i++) {
+	for(int i = 0; i < ctx->numunits; i++) {
 		/* for each unit */
 		if((i+1) % 2) {
 			/* if it is the more significant nibble of the byte */
@@ -102,33 +103,39 @@ int insert_chararray(cllct_ctx* ctx, unsigned char* chars)
 			/* or the other one */
 			unitval = (chars[i/2]);
 		}
-		unitval &= 0xF /* need only the lower 4 bits for a nibble */
+		unitval &= 0xF; /* need only the lower 4 bits for a nibble */
 		
 		if(creation_mode == 0) {
-			tryoffset = get_link(unitval, offset, ctx);
+			if(get_link(unitval, offset, (uint64_t*)&tryoffset, ctx) != 0) {
+				return CLLCT_ERROR_CANTREAD;
+			}
 			if(tryoffset == 0) {
 				/* no link make it and all the following entries */
 				creation_mode = 1;
 				if(write_link(unitval, offset, (uint64_t)ctx->last_fileend, ctx) != 0) {
 					return CLLCT_ERROR_CANTWRITE;
 				}
+				fseeko(ctx->tablefile, 0, SEEK_END);
+				offset = ftello(ctx->tablefile);
 			} else {
 				/* link exists, follow it! */
 				offset = tryoffset;
 			}
 		} else {
-			/* TODO make a new entry for links */
-
-			/* TODO also write the link to the next entry there */
+			uint64_t entry[128] = {};
+			offset += 128;
+			entry[(unsigned int)unitval] = offset;
+			if(fwrite(entry, 128, 1, ctx->tablefile) != 1) {
+				return CLLCT_ERROR_CANTWRITE;
+			}
 		}
 	}
-
 
 	return 0;
 }
 
-int probe_chararray(cllct_ctx* ctx, unsigned char* chars);
-int remove_chararray(cllct_ctx* ctx, unsigned char* chars);
-int insert_hexchararray(cllct_ctx* ctx, unsigned char* digits);
-int probe_hexchararray(cllct_ctx* ctx, unsigned char* digits);
-int remove_hexchararray(cllct_ctx* ctx, unsigned char* digits);
+int probe_chararray(cllct_ctx_t* ctx, unsigned char* chars);
+int remove_chararray(cllct_ctx_t* ctx, unsigned char* chars);
+int insert_hexchararray(cllct_ctx_t* ctx, unsigned char* digits);
+int probe_hexchararray(cllct_ctx_t* ctx, unsigned char* digits);
+int remove_hexchararray(cllct_ctx_t* ctx, unsigned char* digits);
